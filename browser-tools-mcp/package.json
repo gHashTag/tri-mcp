@@ -7,6 +7,7 @@
     "browser-tools-mcp": "dist/mcp-server.js"
   },
   "scripts": {
+    "dev": "tsc && node dist/mcp-server.js",
     "inspect": "tsc && npx @modelcontextprotocol/inspector node -- dist/mcp-server.js",
     "inspect-live": "npx @modelcontextprotocol/inspector npx -- @agentdeskai/browser-tools-mcp",
     "build": "tsc",
