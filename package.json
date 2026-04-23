@@ -4,13 +4,17 @@
   "private": true,
   "description": "Browser Tools MCP - Monorepo",
   "scripts": {
-    "dev": "cd browser-tools-mcp && npm run dev",
-    "dev:server": "cd browser-tools-server && npm start",
+    "dev": "AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 concurrently --names 'SERVER,MCP' --prefix-colors 'blue,green' 'cd browser-tools-server && npm start' 'cd browser-tools-mcp && npm run dev'",
+    "dev:mcp": "cd browser-tools-mcp && npm run dev",
+    "dev:server": "AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 cd browser-tools-server && npm start",
     "build": "cd browser-tools-mcp && npm run build && cd ../browser-tools-server && npm run build",
     "start": "cd browser-tools-mcp && npm start"
   },
   "workspaces": [
     "browser-tools-mcp",
     "browser-tools-server"
-  ]
+  ],
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
 }
