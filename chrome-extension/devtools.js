@@ -12,6 +12,9 @@ let settings = {
   serverHost: "localhost", // Default server host
   serverPort: 3025, // Default server port
   allowAutoPaste: false, // Default auto-paste setting
+  authUsername: "", // Default auth username
+  authPassword: "", // Default auth password
+  enableAuth: false, // Default: auth disabled
 };
 
 // Keep track of debugger state
@@ -331,9 +334,18 @@ async function sendToBrowserConnector(logData) {
   const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/extension-log`;
   console.log(`Sending log to ${serverUrl}`);
 
+  // Prepare headers with auth if enabled
+  const headers: any = {
+    "Content-Type": "application/json",
+  };
+  if (settings.enableAuth && settings.authUsername && settings.authPassword) {
+    const auth = btoa(`${settings.authUsername}:${settings.authPassword}`);
+    headers['Authorization'] = `Basic ${auth}`;
+  }
+
   fetch(serverUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   })
     .then((response) => {
@@ -358,12 +370,26 @@ async function validateServerIdentity() {
     );
 
     // Use fetch with a timeout to prevent long-hanging requests
+    // Create AbortController for manual timeout (AbortSignal.timeout doesn't work in Service Worker)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    // Prepare headers with auth if enabled
+    const headers: any = {};
+    if (settings.enableAuth && settings.authUsername && settings.authPassword) {
+      const auth = btoa(`${settings.authUsername}:${settings.authPassword}`);
+      headers['Authorization'] = `Basic ${auth}`;
+    }
+
     const response = await fetch(
       `http://${settings.serverHost}:${settings.serverPort}/.identity`,
       {
-        signal: AbortSignal.timeout(3000), // 3 second timeout
+        signal: controller.signal,
+        headers,
       }
     );
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error(

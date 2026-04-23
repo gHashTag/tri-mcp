@@ -71,11 +71,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Validate server identity
-async function validateServerIdentity(host, port) {
+async function validateServerIdentity(host, port, authSettings = null) {
   try {
-    const response = await fetch(`http://${host}:${port}/.identity`, {
-      signal: AbortSignal.timeout(3000), // 3 second timeout
-    });
+    // Prepare headers with auth if provided
+    const authHeaders = {};
+    if (authSettings && authSettings.enableAuth && authSettings.authUsername && authSettings.authPassword) {
+      const auth = btoa(`${authSettings.authUsername}:${authSettings.authPassword}`);
+      authHeaders['Authorization'] = `Basic ${auth}`;
+    }
+
+    const response = await fetch(`http://${host}:${port}/.identity`, { headers });
 
     if (!response.ok) {
       console.error(`Invalid server response: ${response.status}`);
@@ -245,6 +250,10 @@ async function updateServerWithUrl(tabId, url, source = "background_update") {
           }/${maxRetries} to update server with URL: ${url}`
         );
 
+        // Create AbortController for manual timeout (AbortSignal.timeout doesn't work in Service Worker)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
         const response = await fetch(serverUrl, {
           method: "POST",
           headers: {
@@ -256,9 +265,10 @@ async function updateServerWithUrl(tabId, url, source = "background_update") {
             timestamp: Date.now(),
             source: source,
           }),
-          // Add a timeout to prevent hanging requests
-          signal: AbortSignal.timeout(5000),
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
           const responseData = await response.json();
@@ -310,24 +320,39 @@ async function retestConnectionOnRefresh(tabId) {
     // Test the connection with the last known host and port
     const isConnected = await validateServerIdentity(
       settings.serverHost,
-      settings.serverPort
+      settings.serverPort,
+      settings
     );
 
     // Notify all devtools instances about the connection status
-    chrome.runtime.sendMessage({
-      type: "CONNECTION_STATUS_UPDATE",
-      isConnected: isConnected,
-      tabId: tabId,
-    });
+    try {
+      chrome.runtime.sendMessage({
+        type: "CONNECTION_STATUS_UPDATE",
+        isConnected: isConnected,
+        tabId: tabId,
+      });
+    } catch (e) {
+      // Ignore error when DevTools panel isn't open
+      if (e.message && e.message.includes("Receiving end does not exist")) {
+        console.log("DevTools panel not open, skipping status update");
+      }
+    }
 
     // Always notify for page refresh, whether connected or not
     // This ensures any ongoing discovery is cancelled and restarted
-    chrome.runtime.sendMessage({
-      type: "INITIATE_AUTO_DISCOVERY",
-      reason: "page_refresh",
-      tabId: tabId,
-      forceRestart: true, // Add a flag to indicate this should force restart any ongoing processes
-    });
+    try {
+      chrome.runtime.sendMessage({
+        type: "INITIATE_AUTO_DISCOVERY",
+        reason: "page_refresh",
+        tabId: tabId,
+        forceRestart: true, // Add a flag to indicate this should force restart any ongoing processes
+      });
+    } catch (e) {
+      // Ignore error when DevTools panel isn't open
+      if (e.message && e.message.includes("Receiving end does not exist")) {
+        console.log("DevTools panel not open, skipping auto-discovery notification");
+      }
+    }
 
     if (!isConnected) {
       console.log(

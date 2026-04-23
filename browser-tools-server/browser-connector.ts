@@ -243,7 +243,42 @@ let PORT = REQUESTED_PORT;
 
 // Create application and initialize middleware
 const app = express();
+
+// Basic authentication (username/password)
+const AUTH_USERNAME = process.env.AUTH_USERNAME || "admin";
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD || "";
+const ENABLE_AUTH = process.env.ENABLE_AUTH !== "false";
+
+// Basic auth middleware
+const basicAuthMiddleware = (req: any, res: any, next: any) => {
+  if (!ENABLE_AUTH) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Browser Tools Server"');
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
+  const [username, password] = auth.split(':');
+
+  if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
+    next();
+  } else {
+    res.status(403).json({ error: 'Invalid credentials' });
+  }
+};
+
 app.use(cors());
+// Apply auth to all endpoints except health check
+app.use((req: any, res: any, next: any) => {
+  if (req.path === '/.identity' || req.path === '/.port') {
+    return next();
+  }
+  basicAuthMiddleware(req, res, next);
+});
 // Increase JSON body parser limit to 50MB to handle large screenshots
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));

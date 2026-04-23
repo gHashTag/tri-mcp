@@ -343,6 +343,9 @@ advancedSettingsHeader.addEventListener("click", () => {
 
 // Get all inputs by ID
 const allowAutoPasteCheckbox = document.getElementById("allow-auto-paste");
+const enableAuthCheckbox = document.getElementById("enable-auth");
+const authUsernameInput = document.getElementById("auth-username");
+const authPasswordInput = document.getElementById("auth-password");
 
 // Update UI from settings
 function updateUIFromSettings() {
@@ -356,6 +359,9 @@ function updateUIFromSettings() {
   serverHostInput.value = settings.serverHost;
   serverPortInput.value = settings.serverPort;
   allowAutoPasteCheckbox.checked = settings.allowAutoPaste;
+  enableAuthCheckbox.checked = settings.enableAuth || false;
+  authUsernameInput.value = settings.authUsername || "";
+  authPasswordInput.value = settings.authPassword || "";
 }
 
 // Save settings
@@ -422,6 +428,22 @@ serverPortInput.addEventListener("change", (e) => {
 // Add event listener for auto-paste checkbox
 allowAutoPasteCheckbox.addEventListener("change", (e) => {
   settings.allowAutoPaste = e.target.checked;
+  saveSettings();
+});
+
+// Add event listeners for auth fields
+enableAuthCheckbox.addEventListener("change", (e) => {
+  settings.enableAuth = e.target.checked;
+  saveSettings();
+});
+
+authUsernameInput.addEventListener("input", (e) => {
+  settings.authUsername = e.target.value;
+  saveSettings();
+});
+
+authPasswordInput.addEventListener("input", (e) => {
+  settings.authPassword = e.target.value;
   saveSettings();
 });
 
