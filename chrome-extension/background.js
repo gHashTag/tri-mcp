@@ -1,3 +1,12 @@
+// Safe message sender - ignores errors when DevTools panel is closed
+function safeSendMessage(message) {
+  try {
+    chrome.runtime.sendMessage(message);
+  } catch (e) {
+    // Silently ignore - DevTools panel is not open
+  }
+}
+
 // Listen for messages from the devtools panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "GET_CURRENT_URL" && message.tabId) {
@@ -40,8 +49,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         serverPort: 3025,
       };
 
-      // Validate server identity first
-      validateServerIdentity(settings.serverHost, settings.serverPort)
+      // Validate server identity first (pass settings for auth)
+      validateServerIdentity(settings.serverHost, settings.serverPort, settings)
         .then((isValid) => {
           if (!isValid) {
             console.error(
@@ -80,7 +89,7 @@ async function validateServerIdentity(host, port, authSettings = null) {
       authHeaders['Authorization'] = `Basic ${auth}`;
     }
 
-    const response = await fetch(`http://${host}:${port}/.identity`, { headers });
+    const response = await fetch(`http://${host}:${port}/.identity`, { headers: authHeaders });
 
     if (!response.ok) {
       console.error(`Invalid server response: ${response.status}`);
@@ -250,15 +259,20 @@ async function updateServerWithUrl(tabId, url, source = "background_update") {
           }/${maxRetries} to update server with URL: ${url}`
         );
 
+        // Prepare headers with auth if enabled
+        const headers = { "Content-Type": "application/json" };
+        if (settings.enableAuth && settings.authUsername && settings.authPassword) {
+          const auth = btoa(`${settings.authUsername}:${settings.authPassword}`);
+          headers['Authorization'] = `Basic ${auth}`;
+        }
+
         // Create AbortController for manual timeout (AbortSignal.timeout doesn't work in Service Worker)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const response = await fetch(serverUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: headers,
           body: JSON.stringify({
             url: url,
             tabId: tabId,
@@ -325,34 +339,20 @@ async function retestConnectionOnRefresh(tabId) {
     );
 
     // Notify all devtools instances about the connection status
-    try {
-      chrome.runtime.sendMessage({
-        type: "CONNECTION_STATUS_UPDATE",
-        isConnected: isConnected,
-        tabId: tabId,
-      });
-    } catch (e) {
-      // Ignore error when DevTools panel isn't open
-      if (e.message && e.message.includes("Receiving end does not exist")) {
-        console.log("DevTools panel not open, skipping status update");
-      }
-    }
+    safeSendMessage({
+      type: "CONNECTION_STATUS_UPDATE",
+      isConnected: isConnected,
+      tabId: tabId,
+    });
 
     // Always notify for page refresh, whether connected or not
     // This ensures any ongoing discovery is cancelled and restarted
-    try {
-      chrome.runtime.sendMessage({
-        type: "INITIATE_AUTO_DISCOVERY",
-        reason: "page_refresh",
-        tabId: tabId,
-        forceRestart: true, // Add a flag to indicate this should force restart any ongoing processes
-      });
-    } catch (e) {
-      // Ignore error when DevTools panel isn't open
-      if (e.message && e.message.includes("Receiving end does not exist")) {
-        console.log("DevTools panel not open, skipping auto-discovery notification");
-      }
-    }
+    safeSendMessage({
+      type: "INITIATE_AUTO_DISCOVERY",
+      reason: "page_refresh",
+      tabId: tabId,
+      forceRestart: true,
+    });
 
     if (!isConnected) {
       console.log(
@@ -417,11 +417,16 @@ function captureAndSendScreenshot(message, settings, sendResponse) {
           const serverUrl = `http://${settings.serverHost}:${settings.serverPort}/screenshot`;
           console.log(`Sending screenshot to ${serverUrl}`);
 
+          // Prepare headers with auth if enabled
+          const headers = { "Content-Type": "application/json" };
+          if (settings.enableAuth && settings.authUsername && settings.authPassword) {
+            const auth = btoa(`${settings.authUsername}:${settings.authPassword}`);
+            headers['Authorization'] = `Basic ${auth}`;
+          }
+
           fetch(serverUrl, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: headers,
             body: JSON.stringify({
               data: dataUrl,
               path: message.screenshotPath,
