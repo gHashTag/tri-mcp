@@ -26,63 +26,32 @@ Perplexity Agent (WS)
 ## ✅ ЧЕКЛИСТ ЗАДАЧ
 
 ### Шаг 1 — Настройка кредов
-- [x] Установить переменные окружения:
-  ```bash
-  export AUTH_USERNAME=perplexity
-  export AUTH_PASSWORD=test123
-  ```
+- [x] Установить переменные окружения
 
 ### Шаг 2 — Запуск сервера
-- [x] Запустить `browser-tools-server` с аутентификацией:
-  ```bash
-  AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx @agentdeskai/browser-tools-server@latest
-  ```
-- [x] Убедиться в логах: `Authentication enabled: username=perplexity`
+- [x] Запущен на порту 3025 — `AUTH_USERNAME=perplexity AUTH_PASSWORD=test123`
+- [x] Лог подтверждает: `Authentication enabled: username=perplexity`
 
 ### Шаг 3 — Настройка Chrome расширения
-- [ ] Открыть Chrome DevTools (F12) → вкладка `BrowserToolsMCP`
-- [ ] В `Server Connection Settings`:
-  - `Enable Authentication` ☑️
-  - `Username`: `perplexity`
-  - `Password`: `test123`
-- [ ] Нажать `Save Settings`
-- [ ] Статус: `Connected` ✅
+- [ ] Chrome DevTools (F12) → `BrowserToolsMCP` → `Enable Authentication` ☑️
+- [ ] Username: `perplexity`, Password: `test123`
+- [ ] `Save Settings` → статус `Connected`
+- **⚠️ РУЧНОЙ ШАГ — ждёт человека**
 
-### Шаг 4 — Запуск Tailscale Funnel
-- [x] Запустить туннель (App Store версия, не Homebrew!):
-  ```bash
-  /Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443
-  ```
-- [x] Записать полученный URL туннеля: `https://playras-macbook-pro-1.tail01804b.ts.net`
+### Шаг 4 — Tailscale Funnel
+- [x] Активен: `https://playras-macbook-pro-1.tail01804b.ts.net`
 
-### Шаг 5 — Верификация туннеля
-- [x] Проверить без auth:
-  ```bash
-  curl https://<YOUR_TAILSCALE_URL>/.identity
-  ```
-- [x] Проверить с auth:
-  ```bash
-  curl -u perplexity:test123 https://<YOUR_TAILSCALE_URL>/api/status
-  ```
+### Шаг 5 — Верификация auth
+- [x] Без auth → `401 Authentication required`
+- [x] Верные креды → `200`
+- [x] Неверные креды → `403 Invalid credentials`
 
-#### Результаты тестов curl (2026-04-23):
-
-| Тест | Учетные данные | HTTP код | Результат |
-|------|----------------|-----------|-----------|
-| /.identity (без auth) | - | 200 | ✅ эндпоинт открыт по дизайну |
-| /.identity (с auth) | perplexity:test123 | 200 | ✅ |
-| /console-logs (без auth) | - | 401 | ✅ Authentication required |
-| /console-logs (с правильными кредами) | perplexity:test123 | 200 | ✅ |
-| /console-logs (с неправильными кредами) | wrong:creds | 403 | ✅ Invalid credentials |
-
-**Вывод:** Аутентификация работает корректно!
-
-### Шаг 6 — MCP конфигурация для Perplexity
-- [ ] Использовать конфигурацию:
+### Шаг 6 — MCP конфигурация
+- [x] Готова:
   ```json
   {
     "mcpServers": [{
-      "url": "wss://<YOUR_TAILSCALE_URL>",
+      "url": "wss://playras-macbook-pro-1.tail01804b.ts.net",
       "transport": "websocket",
       "headers": {
         "Authorization": "Basic cGVycGxleGl0eTp0ZXN0MTIz"
@@ -92,85 +61,25 @@ Perplexity Agent (WS)
   ```
 
 ### Шаг 7 — Боевые тесты через Perplexity
-- [ ] `"Take a screenshot"` → скриншот текущей вкладки
-- [ ] `"Get console logs"` → консольные логи браузера
-- [ ] `"Run accessibility audit"` → аудит доступности
+- [ ] `"Take a screenshot"`
+- [ ] `"Get console logs"`
+- [ ] `"Run accessibility audit"`
+- **⚠️ ОЖИДАЕТ — подключить Perplexity к конфигу выше**
 
 ---
 
-## 🔍 Ключевые файлы для проверки
+## 📊 ИТОГ АВТОТЕСТОВ
 
-| Файл | Зона ответственности |
-|------|---------------------|
-| `browser-tools-server/browser-connector.ts` | Логика аутентификации (строки 247-281) |
-| `chrome-extension/panel.js` | UI настроек авторизации |
-| `chrome-extension/devtools.js` | WebSocket соединение |
-
----
-
-## 🛠 Дебаг-команды если что-то не работает
-
-```bash
-# Туннель живой?
-curl https://<TAILSCALE_URL>/.identity
-
-# Сервер принимает auth?
-curl -u perplexity:test123 http://localhost:3025/.identity
-
-# WebSocket сервер отвечает?
-npm install -g wscat
-wscat -c ws://localhost:3025/extension-ws
-```
+| Компонент | Статус | Детали |
+|-----------|--------|--------|
+| Сервер | ✅ | Порт 3025, auth включён |
+| Tailscale Funnel | ✅ | `playras-macbook-pro-1.tail01804b.ts.net` |
+| Auth (без кредов) | ✅ | 401 |
+| Auth (верные креды) | ✅ | 200 |
+| Auth (неверные) | ✅ | 403 |
+| Chrome Extension | ⏳ | Ручной шаг |
+| Perplexity WebSocket | ⏳ | Ожидает подключения |
 
 ---
 
-## 📋 Отчёт солдата
-
-### Что сработало ✅
-
-1. **Настройка кредов** - переменные окружения установлены
-2. **Запуск сервера** - сервер запущен на порту 3025 с `AUTH_USERNAME=perplexity`, `AUTH_PASSWORD=test123`
-3. **Tailscale Funnel** - туннель активен и проксирует на порт 3025
-4. **Верификация туннеля** - все curl тесты пройдены:
-   - Без auth: 401 (Authentication required)
-   - С правильными кредами: 200
-   - С неправильными кредами: 403 (Invalid credentials)
-
-### Что не сработало ❌
-
-- Ничего! Все автоматизированные тесты пройдены успешно.
-
-### URL туннеля
-
-`https://playras-macbook-pro-1.tail01804b.ts.net`
-
-### MCP конфигурация для Perplexity
-
-```json
-{
-  "mcpServers": [{
-    "url": "wss://playras-macbook-pro-1.tail01804b.ts.net",
-    "transport": "websocket",
-    "headers": {
-      "Authorization": "Basic cGVycGxleGl0eTp0ZXN0MTIz"
-    }
-  }]
-}
-```
-
-### Осталось выполнить
-
-- [ ] Шаг 3 — Настройка Chrome расширения (требуется ручная настройка в DevTools)
-- [ ] Шаг 6 — Подключение Perplexity агента
-- [ ] Шаг 7 — Боевые тесты через Perplexity
-
-### Дата и статус
-
-- **Дата:** 2026-04-23
-- **Исполнитель:** Claude (browser-tools-mcp)
-- **Версия сервера:** 1.2.0
-- **Статус:** Аутентификация протестирована, туннель активен, ожидает ручной настройки Chrome расширения и подключения Perplexity агента
-
----
-
-> **Генерал ждёт доклада. Удачи, солдат. 🫡**
+> **Генерал доволен. Следующий шаг — ручное подключение Chrome Extension и финальный тест через Perplexity. 🫡**
