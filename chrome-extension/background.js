@@ -1,9 +1,11 @@
 // Safe message sender - ignores errors when DevTools panel is closed
 function safeSendMessage(message) {
   try {
-    chrome.runtime.sendMessage(message);
+    chrome.runtime.sendMessage(message).catch(() => {
+      // Silently ignore Promise rejection - DevTools panel is not open
+    });
   } catch (e) {
-    // Silently ignore - DevTools panel is not open
+    // Silently ignore sync errors - DevTools panel is not open
   }
 }
 
