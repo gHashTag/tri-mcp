@@ -16,6 +16,20 @@ Tailscale Funnel: ⚠️ MANUAL SETUP REQUIRED
 cd /Users/playra/browser-tools-mcp && bun dev
 ```
 
+### 📋 Startup Logs (What to expect)
+
+```
+$ cd browser-tools-mcp && bun run dev
+$ tsc && node dist/mcp-server.js
+Attempting initial server discovery on startup...
+Starting server discovery process
+Will try hosts: 127.0.0.1, 127.0.0.1, localhost
+Will try ports: 3025, 3026, 3027, 3028, 3029, 3030, 3031, 3032, 3033, 3034, 3035
+Checking 127.0.0.1:3025...
+Successfully found server at 127.0.0.1:3025
+Successfully discovered server at 127.0.0.1:3025
+```
+
 ---
 
 ## 🔐 Authentication Credentials

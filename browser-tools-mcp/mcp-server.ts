@@ -1434,6 +1434,29 @@ server.tool(
       console.error(
         `Successfully discovered server at ${discoveredHost}:${discoveredPort}`
       );
+
+      // Print ONE SHOT info
+      console.error("");
+      console.error("════════════════════════════════════════════════════════════════");
+      console.error("🔥 Agent Quick Start - ONE SHOT");
+      console.error("════════════════════════════════════════════════════════════════");
+      console.error("");
+      console.error("🔐 Authentication Credentials:");
+      console.error("   Username: perplexity");
+      console.error("   Password: test123");
+      console.error("   Base64: cGVycGxleGl0eTp0ZXN0MTIz");
+      console.error("");
+      console.error("🤖️ Perplexity Agent MCP Config:");
+      console.error('   {"mcpServers":[{"url":"wss://playras-macbook-pro-1.tail01804b.ts.net","transport":"websocket","headers":{"Authorization":"Basic cGVycGxleGl0eTp0ZXN0MTIz"}}]}');
+      console.error("");
+      console.error("🧪 Test Commands:");
+      console.error('   - "Take a screenshot"');
+      console.error('   - "Get console logs"');
+      console.error('   - "Run accessibility audit"');
+      console.error('   - "Run performance audit"');
+      console.error("");
+      console.error("════════════════════════════════════════════════════════════════");
+      console.error("");
     } else {
       console.error(
         "Initial server discovery failed. Will try again when tools are used."
