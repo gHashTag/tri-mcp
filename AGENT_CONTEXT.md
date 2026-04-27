@@ -19,7 +19,7 @@
 
 ```
 browser-tools-server/
-  browser-connector.ts   ← Express HTTP сервер порт 3025 + WebSocket ↔ Chrome Extension
+  browser-connector.ts   ← Express HTTP сервер порт 3026 + WebSocket ↔ Chrome Extension
   lighthouse/            ← SEO/Performance/Accessibility аудиты (Node.js)
 browser-tools-mcp/
   mcp-server.ts          ← MCP stdio сервер (14 tools для Claude/Perplexity)
@@ -59,7 +59,7 @@ tri-mcp/                             ← корень репо
         lib.rs                       ← pub struct McpServer
         protocol.rs                  ← MCP JSON-RPC over stdio
         tools.rs                     ← все 14 tools
-        discovery.rs                 ← server discovery порты 3025-3035
+        discovery.rs                 ← server discovery порты 3026-3035
     BR-XTASK/                        ← 🥉 BRONZE: launcher
       Cargo.toml                     ← name = "trios-mcp"
       RING.md
@@ -98,7 +98,7 @@ reqwest = { version = "0.12", features = ["json"] }
 
 ---
 
-## SR-00 — HTTP Server (порт 3025)
+## SR-00 — HTTP Server (порт 3026)
 
 Заменяет `browser-tools-server/browser-connector.ts` (1439 строк Express + ws)
 
@@ -106,7 +106,7 @@ reqwest = { version = "0.12", features = ["json"] }
 
 ```rust
 // GET  /.identity      → {"signature": "mcp-browser-connector-24x7"}
-// GET  /.port          → {"port": 3025}
+// GET  /.port          → {"port": 3026}
 // POST /extension-log  ← Chrome Extension → сервер
 // GET  /console-logs
 // GET  /console-errors
@@ -222,7 +222,7 @@ pub async fn run_stdio(host: &str, port: u16) -> anyhow::Result<()> {
 ```
 
 ### Server discovery:
-- Проверять порты 3025–3035 последовательно
+- Проверять порты 3026–3035 последовательно
 - GET `/.identity` → проверить `signature == "mcp-browser-connector-24x7"`
 
 ---
@@ -235,7 +235,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let host = std::env::var("MCP_HOST").unwrap_or("127.0.0.1".into());
     let port: u16 = std::env::var("MCP_PORT")
-        .unwrap_or("3025".into()).parse()?;
+        .unwrap_or("3026".into()).parse()?;
 
     let browser_host = host.clone();
     let h1 = tokio::spawn(async move {
@@ -266,7 +266,7 @@ async fn main() -> anyhow::Result<()> {
 - **L2**: PR закрывает issue `Closes #N`
 - **L3**: `cargo clippy -- -D warnings` = ноль предупреждений
 - **L4**: `cargo test` все тесты зелёные (≥10 тестов)
-- **L5**: порт **3025** (не 9005)
+- **L5**: порт **3026** (не 9005)
 - **L6**: graceful `Err` возвраты, никаких `panic!` или `.unwrap()` в продакшн коде
 - **L8**: каждый файл = немедленный `git add` + `git commit` + `git push`
 - **L11**: никаких phantom imports (use X если X не используется)
@@ -315,7 +315,7 @@ cargo build -p trios-mcp-sr02 2>&1 | head -20
 # Финальный:
 cargo build 2>&1 | tail -5
 cargo test 2>&1 | tail -20
-curl http://127.0.0.1:3025/.identity
+curl http://127.0.0.1:3026/.identity
 ```
 
 ---
@@ -358,7 +358,7 @@ Closes #259
 - [ ] `cargo build` в tri-mcp зелёный
 - [ ] `cargo clippy -- -D warnings` ноль предупреждений
 - [ ] `cargo test` ≥10 тестов зелёных
-- [ ] `curl http://127.0.0.1:3025/.identity` возвращает `mcp-browser-connector-24x7`
+- [ ] `curl http://127.0.0.1:3026/.identity` возвращает `mcp-browser-connector-24x7`
 - [ ] WebSocket `/extension-ws` принимает соединения
 - [ ] Все 14 MCP tools отвечают через stdio
 - [ ] `RING.md` в каждой ring-директории
