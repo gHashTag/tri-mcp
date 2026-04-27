@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "rings/SR-01",
+    "rings/SR-02",
+    "rings/SR-03",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "auth"] }
+tokio-tungstenite = "0.24"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+reqwest = { version = "0.12", features = ["json"] }
+dotenvy = "0.15"
+colored = "2"
+futures-util = "0.3"
