@@ -2,7 +2,11 @@
 
 ## Цель
 
-Обеспечить полноценное подключение Perplexity агента к локальному `browser-tools-server` через защищённый WebSocket-туннель (Tailscale Funnel) с Basic Auth. После выполнения задачи агент должен уметь делать скриншоты, читать консоль браузера и запускать accessibility аудиты через MCP-инструменты.
+Обеспечить полноценное подключение Perplexity агента к локальному `browser-tools-server` через защищённый WebSocket-туннель (Tailscale Funnel) с Basic Auth.
+
+**Стек:** Только Rust. Все утилиты — Rust binary crates. `.sh` скрипты запрещены.
+
+После выполнения задачи агент должен уметь делать скриншоты, читать консоль браузера и запускать accessibility аудиты через MCP-инструменты.
 
 ---
 
@@ -19,69 +23,112 @@ Perplexity Agent (WSS client)
 
 ---
 
-## Scope работы
+## Структура crate
 
-### Задача 1: Автоматический запуск сервера
-
-**Проблема:** Сейчас сервер запускается вручную с env-переменными.  
-**Решение:** Создать `start-browser-mcp.sh` скрипт и/или `launchd` plist для автозапуска на macOS.
-
-**Критерии выполнения:**
-- [ ] Файл `scripts/start-browser-mcp.sh` — запускает сервер с корректными `AUTH_USERNAME` / `AUTH_PASSWORD`
-- [ ] Файл `scripts/start-tunnel.sh` — запускает Tailscale Funnel на порт 3025
-- [ ] Оба скрипта идемпотентны (повторный запуск не падает)
-- [ ] Опционально: `com.woodypecker.browser-mcp.plist` для автозапуска через `launchd`
-
-**Команды:**
-```bash
-# start-browser-mcp.sh
-pkill -f "browser-tools-server" 2>/dev/null || true
-AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 \
-  npx @agentdeskai/browser-tools-server@latest &
-
-# start-tunnel.sh
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel reset 2>/dev/null || true
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443 3025 --bg
+```
+tri-mcp/
+├── Cargo.toml                          # workspace
+├── crates/
+│   ├── browser-mcp-launcher/           # Задача 1: запуск сервера
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs
+│   ├── tunnel-launcher/                # Задача 1: запуск Tailscale Funnel
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs
+│   └── health-check/                   # Задача 5: smoke-тесты
+│       ├── Cargo.toml
+│       └── src/
+│           └── main.rs
+├── config/
+│   └── mcp-perplexity.json             # Задача 4: MCP конфиг
+└── .env.example                        # Задача 2: шаблон env
 ```
 
 ---
 
-### Задача 2: Хранение credentials в .env
+## Scope работ
 
-**Проблема:** Пароли хардкодятся в командах и документации.  
-**Решение:** Вынести в `.env` файл, добавить `.env.example`.
+### Задача 1: Crate `browser-mcp-launcher`
+
+**Проблема:** Сервер и туннель запускаются вручную.  
+**Решение:** Два Rust binary crate — `browser-mcp-launcher` и `tunnel-launcher`.
+
+**Зависимости:**
+```toml
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+dotenvy = "0.15"
+anyhow = "1"
+```
 
 **Критерии выполнения:**
-- [ ] Файл `.env.example` с шаблоном:
+
+`crates/browser-mcp-launcher/src/main.rs`:
+- [ ] Читает `AUTH_USERNAME` и `AUTH_PASSWORD` из `.env` через `dotenvy`
+- [ ] Убивает существующий процесс `browser-tools-server` если запущен (`sysinfo` crate)
+- [ ] Запускает `npx @agentdeskai/browser-tools-server@latest` через `tokio::process::Command` с env-переменными
+- [ ] Идемпотентен — повторный запуск не паникует
+- [ ] Логирует статус в stdout
+
+```rust
+// Пример структуры main.rs
+use tokio::process::Command;
+use dotenvy::dotenv;
+use std::env;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
+    let username = env::var("AUTH_USERNAME")?;
+    let password = env::var("AUTH_PASSWORD")?;
+
+    Command::new("npx")
+        .args(["@agentdeskai/browser-tools-server@latest"])
+        .env("AUTH_USERNAME", &username)
+        .env("AUTH_PASSWORD", &password)
+        .spawn()?
+        .wait()
+        .await?;
+    Ok(())
+}
+```
+
+`crates/tunnel-launcher/src/main.rs`:
+- [ ] Читает `TAILSCALE_URL` из `.env`
+- [ ] Сбрасывает старый Funnel через `Command::new("/Applications/Tailscale.app/Contents/MacOS/Tailscale").args(["funnel", "reset"])`
+- [ ] Запускает `funnel --https=443 3025 --bg`
+- [ ] Выводит итоговый URL туннеля
+
+---
+
+### Задача 2: `.env.example`
+
+**Критерии выполнения:**
+- [ ] Файл `.env.example` в корне репозитория:
   ```
   AUTH_USERNAME=perplexity
   AUTH_PASSWORD=test123
   TAILSCALE_URL=https://playras-macbook-pro-1.tail01804b.ts.net
   ```
 - [ ] `.env` добавлен в `.gitignore`
-- [ ] Скрипты из Задачи 1 читают переменные через `source .env`
+- [ ] Все crates читают переменные через `dotenvy::dotenv()`
 
 ---
 
-### Задача 3: Настройка Chrome Extension
-
-**Проблема:** Chrome extension требует ручной настройки через DevTools UI.  
-**Решение:** Задокументировать процесс и добавить скриншоты в README.
+### Задача 3: Документация Chrome Extension
 
 **Критерии выполнения:**
-- [ ] В `README.md` (или отдельном `SETUP.md`) есть раздел "Chrome Extension Setup" с шагами:
+- [ ] В `README.md` или `SETUP.md` раздел "Chrome Extension Setup":
   1. Открыть DevTools → BrowserToolsMCP tab
-  2. Установить `localhost:3025`
-  3. Включить Authentication с credentials из `.env`
-  4. Проверить статус `Connected ✅`
-- [ ] Скриншот или ascii-схема настройки прилагается
+  2. Host: `localhost`, Port: `3025`
+  3. Enable Authentication: `AUTH_USERNAME` / `AUTH_PASSWORD` из `.env`
+  4. Статус `Connected ✅`
 
 ---
 
-### Задача 4: MCP конфигурация для Perplexity
-
-**Проблема:** Конфигурация подключения нигде не зафиксирована в репозитории.  
-**Решение:** Добавить готовый JSON-конфиг.
+### Задача 4: MCP конфиг для Perplexity
 
 **Критерии выполнения:**
 - [ ] Файл `config/mcp-perplexity.json`:
@@ -97,67 +144,78 @@ AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 \
     }]
   }
   ```
-- [ ] В документации указано как обновить Base64 при смене пароля:
-  ```bash
-  echo -n "username:password" | base64
+- [ ] В README указано как пересгенерировать Base64:
+  ```rust
+  // Утилита в crate или однострочник через base64 crate
+  use base64::{Engine, engine::general_purpose};
+  let encoded = general_purpose::STANDARD.encode("username:password");
   ```
 
 ---
 
-### Задача 5: Health-check и smoke-тесты
+### Задача 5: Crate `health-check`
 
-**Проблема:** Нет автоматической проверки работоспособности стека.  
-**Решение:** Скрипт `scripts/health-check.sh` с набором curl-тестов.
+**Проблема:** Нет автоматической проверки стека.  
+**Решение:** Rust binary crate `health-check` использует `reqwest` для curl-эквивалентных проверок.
+
+**Зависимости:**
+```toml
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+dotenvy = "0.15"
+anyhow = "1"
+colored = "2"
+```
 
 **Критерии выполнения:**
-- [ ] Скрипт проверяет все 4 сценария:
+- [ ] Проверяет 4 сценария:
 
   | Тест | Endpoint | Ожидаемый HTTP код |
-  |------|----------|--------------------|
+  |------|----------|-------------------|
   | Public endpoint | `/.identity` | 200 |
   | No auth | `/console-logs` | 401 |
   | Valid auth | `/console-logs` | 200 |
   | Wrong auth | `/console-logs` | 403 |
 
-- [ ] Скрипт выводит ✅ / ❌ для каждого теста
-- [ ] Скрипт возвращает exit code `1` если хотя бы один тест провалился
+- [ ] Выводит `✅ / ❌` с цветом через `colored` crate
+- [ ] Завершается с `process::exit(1)` если хотя бы один тест провалился
 
-```bash
-#!/bin/bash
-source "$(dirname "$0")/../.env" 2>/dev/null || true
-BASE_URL="${TAILSCALE_URL:-https://playras-macbook-pro-1.tail01804b.ts.net}"
-PASS=0; FAIL=0
+```rust
+// Пример структуры
+use reqwest::Client;
+use colored::Colorize;
 
-check() {
-  local desc=$1 url=$2 expected=$3; shift 3
-  local code; code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url")
-  if [ "$code" = "$expected" ]; then echo "✅ $desc → $code"; ((PASS++))
-  else echo "❌ $desc → $code (expected $expected)"; ((FAIL++)); fi
+async fn check(client: &Client, desc: &str, url: &str, expected: u16, auth: Option<(&str, &str)>) -> bool {
+    let mut req = client.get(url);
+    if let Some((user, pass)) = auth {
+        req = req.basic_auth(user, Some(pass));
+    }
+    let status = req.send().await.unwrap().status().as_u16();
+    if status == expected {
+        println!("{} {} → {}", "✅".green(), desc, status);
+        true
+    } else {
+        println!("{} {} → {} (expected {})", "❌".red(), desc, status, expected);
+        false
+    }
 }
-
-check "Public /.identity"     "$BASE_URL/.identity"    200
-check "No auth /console-logs" "$BASE_URL/console-logs" 401
-check "Valid auth"            "$BASE_URL/console-logs" 200 -u "$AUTH_USERNAME:$AUTH_PASSWORD"
-check "Wrong auth"            "$BASE_URL/console-logs" 403 -u "wrong:creds"
-
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-[ $FAIL -eq 0 ] && exit 0 || exit 1
 ```
 
 ---
 
-### Задача 6: Финальное end-to-end тестирование с Perplexity
-
-**Проблема:** Статус подключения Perplexity — `⏳ Pending`.  
-**Решение:** Провести ручное E2E тестирование и обновить статус в `POLICY-perplexity-auth-setup.md`.
+### Задача 6: End-to-end тест с Perplexity
 
 **Критерии выполнения:**
-- [ ] Perplexity агент успешно подключается через WSS
+- [ ] Запустить `cargo run -p browser-mcp-launcher`
+- [ ] Запустить `cargo run -p tunnel-launcher`
+- [ ] Запустить `cargo run -p health-check` — все 4 теста ✅
+- [ ] Подключить Perplexity через `config/mcp-perplexity.json`
 - [ ] Команда **"Take a screenshot"** — возвращает скриншот текущего таба
 - [ ] Команда **"Get console logs"** — возвращает лог браузера
 - [ ] Команда **"Run accessibility audit"** — возвращает WCAG-отчёт
-- [ ] Статус в `POLICY-perplexity-auth-setup.md` обновлён:
+- [ ] Обновить статус в `POLICY-perplexity-auth-setup.md`:
+
   | Component | Status |
   |---|---|
   | Perplexity Connection | ✅ Connected |
@@ -168,11 +226,14 @@ echo "Results: $PASS passed, $FAIL failed"
 
 ## Технические ограничения
 
-- **Tailscale версия**: обязательно App Store (`/Applications/Tailscale.app`), не Homebrew — Homebrew версия не поддерживает WebSocket в Funnel
-- **Порт**: `3025` (browser-tools-server), `443` (Funnel HTTPS)
-- **Протокол**: WebSocket (`wss://`), не HTTP
-- **Auth**: HTTP Basic Auth через заголовок `Authorization: Basic <base64>`
-- **Credentials**: хранить только в `.env`, не в коде
+- **Язык:** Только Rust. `.sh` скрипты запрещены
+- **Runtime:** `tokio` для async, `dotenvy` для `.env`
+- **HTTP клиент:** `reqwest` (не curl, не ureq)
+- **Tailscale версия:** App Store (`/Applications/Tailscale.app`), не Homebrew — нет WebSocket поддержки в Funnel у Homebrew версии
+- **Порт:** `3025` (browser-tools-server), `443` (Funnel HTTPS)
+- **Протокол:** WebSocket (`wss://`), не HTTP
+- **Auth:** HTTP Basic Auth → `Authorization: Basic <base64>`
+- **Credentials:** только в `.env`, никогда в коде
 
 ---
 
@@ -180,45 +241,17 @@ echo "Results: $PASS passed, $FAIL failed"
 
 | # | Задача | Приоритет | Оценка |
 |---|--------|-----------|--------|
-| 1 | Автозапуск сервера | 🔴 High | 1h |
-| 2 | .env файл | 🔴 High | 30m |
+| 1 | Crate `browser-mcp-launcher` + `tunnel-launcher` | 🔴 High | 2h |
+| 2 | `.env.example` + `.gitignore` | 🔴 High | 30m |
 | 3 | Chrome Extension docs | 🟡 Medium | 1h |
-| 4 | MCP конфиг JSON | 🔴 High | 30m |
-| 5 | Health-check скрипт | 🟡 Medium | 1h |
+| 4 | `config/mcp-perplexity.json` | 🔴 High | 30m |
+| 5 | Crate `health-check` | 🔴 High | 2h |
 | 6 | E2E тест с Perplexity | 🔴 High | 2h |
 
-**Итого:** ~6 часов
-
----
-
-## Структура файлов (создать)
-
-```
-tri-mcp/
-├── .env.example                          # шаблон переменных окружения
-├── config/
-│   └── mcp-perplexity.json               # MCP конфиг для Perplexity
-└── scripts/
-    ├── start-browser-mcp.sh              # запуск browser-tools-server
-    ├── start-tunnel.sh                   # запуск Tailscale Funnel
-    └── health-check.sh                   # smoke-тесты
-```
-
----
-
-## Связанные файлы
-
-| Файл | Описание |
-|------|----------|
-| `TASKS/POLICY-perplexity-auth-setup.md` | Исходный гайд по настройке |
-| `scripts/start-browser-mcp.sh` | Скрипт запуска сервера (создать) |
-| `scripts/start-tunnel.sh` | Скрипт запуска туннеля (создать) |
-| `scripts/health-check.sh` | Smoke-тесты (создать) |
-| `config/mcp-perplexity.json` | MCP конфиг для Perplexity (создать) |
-| `.env.example` | Шаблон переменных окружения (создать) |
+**Итого:** ~8 часов
 
 ---
 
 **Создано:** 2026-04-27  
 **Источник:** `TASKS/POLICY-perplexity-auth-setup.md`  
-**Версия:** 1.0.0
+**Версия:** 2.0.0 (Rust-only rewrite)
