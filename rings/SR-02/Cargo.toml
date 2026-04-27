@@ -1,0 +1,19 @@
+[package]
+name = "tri-mcp-sr02"
+version.workspace = true
+edition.workspace = true
+description = "SR-02 — MCP stdio server"
+
+[[bin]]
+name = "mcp-server"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tri-mcp-sr01 = { path = "../SR-01" }
+tri-mcp-sr03 = { path = "../SR-03" }
