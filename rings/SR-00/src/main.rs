@@ -2,7 +2,7 @@ use axum::{
     extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post, delete},
+    routing::{get, post},
     Json, Router,
 };
 use serde_json::json;
@@ -15,7 +15,6 @@ use tracing::info;
 struct AppState {
     logs: Arc<Mutex<VecDeque<serde_json::Value>>>,
     screenshots: Arc<Mutex<Vec<String>>>,
-    ws_clients: Arc<Mutex<Vec<tokio::sync::mpsc::UnboundedSender<String>>>>,
     auth_username: String,
     auth_password: String,
 }
@@ -93,43 +92,27 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl
     ws.on_upgrade(|socket| handle_ws(socket, state))
 }
 
-async fn handle_ws(mut socket: WebSocket, state: AppState) {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    state.ws_clients.lock().unwrap().push(tx);
+async fn handle_ws(mut socket: WebSocket, _state: AppState) {
     info!("WS connected");
-
-    loop {
-        tokio::select! {
-            msg = socket.recv() => {
-                match msg {
-                    Some(Ok(Message::Text(t))) => info!("WS: {}", t),
-                    Some(Ok(Message::Close(_))) | None => break,
-                    _ => {}
-                }
-            }
-            out = rx.recv() => {
-                if let Some(text) = out {
-                    if socket.send(Message::Text(text)).await.is_err() { break; }
-                }
-            }
+    while let Some(Ok(msg)) = socket.recv().await {
+        if let Message::Text(t) = msg {
+            info!("WS: {}", t);
         }
     }
-    info!("WS disconnected");
 }
 
 pub fn build_router(username: String, password: String) -> Router {
     let state = AppState {
         logs: Arc::new(Mutex::new(VecDeque::new())),
         screenshots: Arc::new(Mutex::new(Vec::new())),
-        ws_clients: Arc::new(Mutex::new(Vec::new())),
         auth_username: username,
         auth_password: password,
     };
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
     Router::new()
-        .route("/health", get(health))
         .route("/.identity", get(identity))
+        .route("/health", get(health))
         .route("/logs", get(get_logs).post(post_log).delete(delete_logs))
         .route("/screenshot/latest", get(get_screenshot))
         .route("/screenshot", post(post_screenshot))

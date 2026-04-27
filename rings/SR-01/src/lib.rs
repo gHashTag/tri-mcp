@@ -257,6 +257,55 @@ pub struct DomElement {
     pub xpath: Option<String>,
 }
 
+/// Selected element (alias for extension communication)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectedElement {
+    pub tag_name: String,
+    pub id: Option<String>,
+    pub class_name: Option<String>,
+    pub attributes: serde_json::Value,
+}
+
+// ============================================================================
+// WebSocket Messages from Chrome Extension (browser-connector.ts wss.on("message"))
+// ============================================================================
+
+/// Extension message types (WS protocol between Chrome Extension and Server)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ExtensionMessage {
+    #[serde(rename = "screenshot-data")]
+    ScreenshotData { data: String, path: Option<String>, auto_paste: Option<bool> },
+    #[serde(rename = "screenshot-error")]
+    ScreenshotError { error: String },
+    #[serde(rename = "current-url-response")]
+    UrlResponse { url: String, tab_id: Option<serde_json::Value>, request_id: Option<String> },
+    #[serde(rename = "page-navigated")]
+    PageNavigated { url: String, tab_id: Option<serde_json::Value> },
+    #[serde(rename = "console-log")]
+    ConsoleLogEntry { log: BrowserLog },
+    #[serde(rename = "network-request")]
+    NetworkRequestEntry { request: NetworkRequest },
+    #[serde(rename = "element-selected")]
+    ElementSelected { element: SelectedElement },
+}
+
+/// MCP Tool definition (for SR-03 tool listing)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpTool {
+    pub name: String,
+    pub description: String,
+    pub input_schema: serde_json::Value,
+}
+
+/// Tool call (for MCP protocol)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
 /// Page info
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PageInfo {
@@ -335,5 +384,55 @@ mod tests {
     fn test_content_block_text() {
         let content = text_content("Hello, world!");
         matches!(content, ContentBlock::Text { .. });
+    }
+
+    // Extension message tests
+    #[test]
+    fn test_extension_message_screenshot_data() {
+        let json = r#"{"type":"screenshot-data","data":"iVBORw0KGgoAAAANSUhEUgAAAAUAAA..." ,"path":"/tmp/screenshot.png"}"#;
+        let msg: ExtensionMessage = serde_json::from_str(json).unwrap();
+        matches!(msg, ExtensionMessage::ScreenshotData { .. });
+    }
+
+    #[test]
+    fn test_extension_message_url_response() {
+        let json = r#"{"type":"current-url-response","url":"https://example.com","tab_id":123}"#;
+        let msg: ExtensionMessage = serde_json::from_str(json).unwrap();
+        matches!(msg, ExtensionMessage::UrlResponse { .. });
+    }
+
+    #[test]
+    fn test_extension_message_console_log() {
+        let json = r#"{"type":"console-log","log":{"level":"info","message":"test","timestamp":1234567890}}"#;
+        let msg: ExtensionMessage = serde_json::from_str(json).unwrap();
+        matches!(msg, ExtensionMessage::ConsoleLogEntry { .. });
+    }
+
+    #[test]
+    fn test_selected_element() {
+        let json = r#"{"tag_name":"div","id":"main","class_name":"container","attributes":{"data-id":"123"}}"#;
+        let elem: SelectedElement = serde_json::from_str(json).unwrap();
+        assert_eq!(elem.tag_name, "div");
+        assert_eq!(elem.id, Some("main".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_tool() {
+        let tool = McpTool {
+            name: "getScreenshot".to_string(),
+            description: "Capture screenshot".to_string(),
+            input_schema: json!({"type": "object"}),
+        };
+        assert_eq!(tool.name, "getScreenshot");
+    }
+
+    #[test]
+    fn test_tool_call() {
+        let call = ToolCall {
+            id: "call-123".to_string(),
+            name: "getScreenshot".to_string(),
+            arguments: json!({}),
+        };
+        assert_eq!(call.id, "call-123");
     }
 }

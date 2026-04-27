@@ -15,5 +15,9 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+axum = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { workspace = true }
 tri-mcp-sr01 = { path = "../SR-01" }
-tri-mcp-sr03 = { path = "../SR-03" }
+uuid = { workspace = true }
+base64 = { workspace = true }
