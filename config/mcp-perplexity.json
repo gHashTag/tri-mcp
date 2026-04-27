@@ -1,0 +1,10 @@
+{
+  "mcpServers": [{
+    "name": "browser-tools",
+    "url": "wss://playras-macbook-pro-1.tail01804b.ts.net",
+    "transport": "websocket",
+    "headers": {
+      "Authorization": "Basic cGVycGxleGl0eTp0ZXN0MTIz"
+    }
+  }]
+}

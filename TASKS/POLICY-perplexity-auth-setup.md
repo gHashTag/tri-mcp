@@ -10,7 +10,7 @@ Setup and test authentication for browser-tools-mcp server accessible to Perplex
 Perplexity Agent (WS)
   → wss:// + Basic Auth headers
     → Tailscale Funnel (HTTPS :443)
-      → browser-tools-server (localhost:3025)
+      → browser-tools-server (localhost:3026)
         → Chrome Extension (WebSocket)
 ```
 
@@ -27,47 +27,33 @@ Perplexity Agent (WS)
 
 ### Step 1: Configure Authentication Credentials
 
-Set environment variables for the server:
+Copy `.env.example` to `.env` and fill in:
 
-```bash
-export AUTH_USERNAME=perplexity
-export AUTH_PASSWORD=test123
 ```
-
-Or pass them directly:
-
-```bash
-AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx @agentdeskai/browser-tools-server@latest
+AUTH_USERNAME=perplexity
+AUTH_PASSWORD=test123
+PORT=3026
+TAILSCALE_URL=https://playras-macbook-pro-1.tail01804b.ts.net
 ```
-
-**Credentials:**
-- Username: `perplexity`
-- Password: `test123`
-- Base64 (for HTTP headers): `cGVycGxleGl0eTp0ZXN0MTIz`
 
 ---
 
-### Step 2: Start browser-tools-server
-
-Start the server with authentication enabled:
+### Step 2: Start browser-tools-server (local fork)
 
 ```bash
-AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx @agentdeskai/browser-tools-server@latest
+cd /Users/playra/tri-mcp
+PORT=3026 AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx tsx browser-tools-server/browser-connector.ts
 ```
 
 **Expected output:**
 ```
 Starting Browser Tools Server...
-Requested port: 3025
-Found available port: 3025
+Requested port: 3026
+Found available port: 3026
 
 === Browser Tools Server Started ===
-Aggregator listening on http://0.0.0.0:3025
-
-For local access use: http://localhost:3025
+Aggregator listening on http://0.0.0.0:3026
 ```
-
-**Note:** Server will use `AUTH_USERNAME=perplexity` and `AUTH_PASSWORD=test123` by default.
 
 ---
 
@@ -77,7 +63,7 @@ For local access use: http://localhost:3025
 2. Navigate to **BrowserToolsMCP** tab
 3. In **Server Connection Settings**:
    - Server Host: `localhost`
-   - Server Port: `3025`
+   - Server Port: `3026`
    - **Enable Authentication:** ☑️ (check the box)
    - **Username:** `perplexity`
    - **Password:** `test123`
@@ -88,19 +74,13 @@ For local access use: http://localhost:3025
 
 ### Step 4: Start Tailscale Funnel
 
-**CRITICAL:** Use App Store version of Tailscale, NOT Homebrew! The App Store version has better WebSocket support.
-
-Start the tunnel:
+**CRITICAL:** Use App Store version of Tailscale, NOT Homebrew!
 
 ```bash
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443 3025 --bg
+/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443 --bg 3026
 ```
 
-Or via GUI:
-1. Open Tailscale.app from menu bar
-2. Go to **Preferences** → **Funnel**
-3. Click **Turn on Funnel**
-4. Set proxy to: `http://127.0.0.1:3025`
+**Note:** Argument order matters — `--bg` before port number.
 
 **Expected output:**
 ```
@@ -109,48 +89,35 @@ Your Funnel is available at:
 * https://playras-macbook-pro-1.tail01804b.ts.net
 ```
 
-**Save the tunnel URL** - you'll need it for Perplexity configuration.
-
 ---
 
-### Step 5: Verify Tunnel
-
-Test that the tunnel is working:
+### Step 5: Verify with health-check crate
 
 ```bash
-# Test identity endpoint (should always work - no auth required)
-curl https://playras-macbook-pro-1.tail01804b.ts.net/.identity
-
-# Expected response:
-{"port":3025,"name":"browser-tools-server","version":"1.2.0",...}
-
-# Test with correct credentials
-curl -u perplexity:test123 https://playras-macbook-pro-1.tail01804b.ts.net/console-logs
-
-# Test with wrong credentials (should return 403)
-curl -u wrong:creds https://playras-macbook-pro-1.tail01804b.ts.net/console-logs
+cd /Users/playra/tri-mcp
+cargo run -p health-check
 ```
 
-**Expected results:**
+**Expected output:**
+```
+✅ Public /.identity → 200
+✅ No auth /console-logs → 401
+✅ Valid auth /console-logs → 200
+✅ Wrong auth /console-logs → 403
 
-| Test | Credentials | HTTP Code | Status |
-|-------|-------------|-------------|---------|
-| /.identity | none | 200 | ✅ Public endpoint |
-| /console-logs | none | 401 | ✅ Auth required |
-| /console-logs | perplexity:test123 | 200 | ✅ Auth success |
-| /console-logs | wrong:creds | 403 | ✅ Invalid credentials |
+Results: 4 passed, 0 failed
+```
 
 ---
 
 ### Step 6: Configure Perplexity Agent
 
-Perplexity agent connects via WebSocket with Basic Auth headers.
-
-**MCP Configuration:**
+File: `~/.perplexity/mcp.json`
 
 ```json
 {
   "mcpServers": [{
+    "name": "browser-tools",
     "url": "wss://playras-macbook-pro-1.tail01804b.ts.net",
     "transport": "websocket",
     "headers": {
@@ -160,8 +127,7 @@ Perplexity agent connects via WebSocket with Basic Auth headers.
 }
 ```
 
-**How to generate Base64 credentials:**
-
+To regenerate Base64 when password changes:
 ```bash
 echo -n "perplexity:test123" | base64
 # Output: cGVycGxleGl0eTp0ZXN0MTIz
@@ -171,115 +137,35 @@ echo -n "perplexity:test123" | base64
 
 ### Step 7: Test with Perplexity
 
-Once connected, test these commands:
-
-1. **"Take a screenshot"** - Should capture current browser tab
-2. **"Get console logs"** - Should return browser console output
-3. **"Run accessibility audit"** - Should run WCAG audit on current page
+1. **"Take a screenshot"** — captures current browser tab
+2. **"Get console logs"** — returns browser console output
+3. **"Run accessibility audit"** — runs WCAG audit
 
 ---
 
 ## Troubleshooting
 
-### Issue: "Port 3025 is in use"
+### Issue: Tailscale funnel invalid argument
 
-**Solution:** Find and kill existing process:
-
+**Wrong:**
 ```bash
-# Find what's using the port
-lsof -i :3025
-
-# Kill the process
-kill <PID>
-
-# Or kill all browser-tools-server instances
-pkill -f "browser-tools-server"
+tailscale funnel --https=443 3026 --bg   # ❌ --bg must come before port
+```
+**Correct:**
+```bash
+tailscale funnel --https=443 --bg 3026   # ✅
 ```
 
----
+### Issue: Server starts on wrong port
 
-### Issue: Tailscale Funnel shows wrong port
-
-**Solution:** The Funnel may be using old configuration. Reset it:
-
+The npm version ignores `PORT` env. Use local fork with `tsx`:
 ```bash
-# Stop existing funnel
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel stop
-
-# Reset configuration
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel reset
-
-# Start with correct port
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443 3025 --bg
+PORT=3026 AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx tsx browser-tools-server/browser-connector.ts
 ```
 
-Or use Tailscale GUI:
-1. Open Tailscale.app → Preferences → Funnel
-2. Click "Reset Funnel"
-3. Set proxy to: `http://127.0.0.1:3025`
+### Issue: Auth not enforced
 
----
-
-### Issue: Authentication not working (401 on all requests)
-
-**Solution:** Verify server is running with correct environment variables:
-
-```bash
-# Check running server
-ps aux | grep "browser-tools-server"
-
-# Kill and restart with auth variables
-pkill -f "browser-tools-server"
-AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx @agentdeskai/browser-tools-server@latest
-```
-
----
-
-### Issue: Perplexity cannot connect via WebSocket
-
-**Solution:** Tailscale App Store version required. Homebrew version has poor WebSocket support.
-
-```bash
-# Verify you're using App Store version
-/Applications/Tailscale.app/Contents/MacOS/Tailscale --version
-
-# NOT this (Homebrew version)
-/opt/homebrew/bin/tailscale --version
-```
-
----
-
-## Key Files
-
-| File | Purpose |
-|-------|-----------|
-| `browser-tools-server/browser-connector.ts` | Authentication logic (lines 247-281) |
-| `chrome-extension/panel.js` | Extension auth settings UI |
-| `chrome-extension/devtools.js` | WebSocket connection management |
-
----
-
-## Quick Reference Commands
-
-```bash
-# Start server with auth
-AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npx @agentdeskai/browser-tools-server@latest
-
-# Start tunnel (App Store version)
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443 3025 --bg
-
-# Check tunnel status
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel status
-
-# Reset tunnel
-/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel reset
-
-# Test authentication
-curl -u perplexity:test123 http://localhost:3025/.identity
-
-# Test tunnel
-curl https://<YOUR_TAILSCALE_URL>/.identity
-```
+The npm-published `@agentdeskai/browser-tools-server` may not include Basic Auth. Always run from **local tri-mcp fork** which has auth in `browser-tools-server/browser-connector.ts`.
 
 ---
 
@@ -288,11 +174,12 @@ curl https://<YOUR_TAILSCALE_URL>/.identity
 | Setting | Value |
 |----------|--------|
 | Tunnel URL | `https://playras-macbook-pro-1.tail01804b.ts.net` |
-| Server Port | `3025` |
+| Server Port | `3026` |
 | Auth Username | `perplexity` |
 | Auth Password | `test123` |
 | Base64 Auth | `cGVycGxleGl0eTp0ZXN0MTIz` |
-| Protocol | WebSocket (wss://) |
+| Protocol | WebSocket (`wss://`) |
+| Server source | Local fork `tri-mcp/browser-tools-server/` |
 
 ---
 
@@ -300,13 +187,13 @@ curl https://<YOUR_TAILSCALE_URL>/.identity
 
 | Component | Status |
 |-----------|---------|
-| Server | ✅ Running on port 3025 with auth |
-| Tailscale Funnel | ⚠️ Manual configuration required |
-| Authentication | ✅ Tested via curl (401/200/403 responses) |
-| Chrome Extension | ⚠️ Manual configuration required |
-| Perplexity Connection | ⏳ Pending configuration |
+| Server | ✅ Running on port 3026 with Basic Auth |
+| Tailscale Funnel | ✅ `wss://playras-macbook-pro-1.tail01804b.ts.net` → 3026 |
+| Authentication | ✅ 4/4 health checks passed (401/200/403) |
+| Chrome Extension | ⚠️ Manual configuration required (port 3026) |
+| Perplexity Connection | ✅ Configured via `~/.perplexity/mcp.json` |
 
 ---
 
-**Last Updated:** 2026-04-23
-**Version:** 1.2.0
+**Last Updated:** 2026-04-27
+**Version:** 1.3.0
