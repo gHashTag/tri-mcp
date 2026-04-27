@@ -14,16 +14,28 @@ This guide configures Perplexity (https://www.perplexity.ai/account/connectors) 
 
 ## 2. Authentication
 
-Pick **Basic Auth** in the Perplexity UI. Bearer / API Key options will fail.
+The server's auth middleware (after PR-2, see `[SR-02]` follow-up) accepts
+**three** equivalent header shapes — use whichever your MCP client supports:
+
+| Perplexity UI choice | Header sent by client | Server behaviour |
+|---|---|---|
+| **Basic Auth** | `Authorization: Basic <base64(user:pass)>` | ✅ accepted (RFC 7617) |
+| **API Key** field set to `perplexity:test123` | `Authorization: Bearer perplexity:test123` | ✅ accepted (literal `user:pass` after `Bearer`) |
+| API Key field set to a pre-encoded base64 token | `Authorization: Bearer <base64(user:pass)>` | ✅ accepted (decoded, then matched) |
 
 | Field | Value |
 |---|---|
 | Username | `$AUTH_USERNAME` (default `admin`, recommended `perplexity`) |
 | Password | `$AUTH_PASSWORD` (set in your local env) |
 
-The same Basic Auth header guards every browser-tools-server route (except
-`/.identity` and `/.port`), so this single credential covers `/mcp` plus the
-14 internal REST routes the tools bridge to.
+In the current Perplexity Custom Connector UI, the Authentication dropdown
+offers **None** and **API Key** — there is no "Basic Auth" option. Choose
+**API Key** and enter the literal string `perplexity:test123` (or whatever
+`AUTH_USERNAME:AUTH_PASSWORD` you set). The server now decodes both forms.
+
+The same auth header guards every browser-tools-server route (except
+`/.identity` and `/.port`), so this single credential covers `/mcp` plus
+the 14 internal REST routes the tools bridge to.
 
 ## 3. Tools Exposed (14)
 
@@ -82,9 +94,11 @@ natively.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `FETCHER_HTML_STATUS_CODE_ERROR` | Perplexity sent `Authorization: Bearer …` | Switch the connector auth type to **Basic Auth** |
-| 401 on every call | No Authorization header | Re-enter username/password in Perplexity UI |
+| `FETCHER_HTML_STATUS_CODE_ERROR` | Pre-PR-2 server: Perplexity sent `Authorization: Bearer …` while server only accepted Basic | Pull `main` past PR-2 — Bearer literal `user:pass` and `Bearer <base64>` are now both accepted |
+| 401 on every call | No Authorization header | Set the API Key field in Perplexity UI to `user:pass` |
 | 403 on every call | Wrong username/password | Match exactly to `AUTH_USERNAME` / `AUTH_PASSWORD` env |
+| 400 `Malformed Authorization header` | Header missing the token after the scheme | Re-enter the API Key in the connector UI |
+| 400 `Unsupported auth scheme: …` | Some other scheme (e.g. `Token`, `Digest`) | Use Basic or API Key (Bearer) only |
 | `tools/list` returns 6 tools | Pointing at the Railway public MCP, not your local funnel | Update URL to your Tailscale Funnel host + `/mcp` |
 | `Method Not Allowed (stateless /mcp)` | Client tried `GET /mcp` for SSE stream | Only `POST /mcp` is supported in stateless mode |
 

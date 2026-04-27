@@ -250,20 +250,65 @@ const AUTH_USERNAME = process.env.AUTH_USERNAME || "admin";
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD || "";
 const ENABLE_AUTH = process.env.ENABLE_AUTH !== "false";
 
-// Basic auth middleware
+// Authentication middleware — supports three formats so that MCP clients
+// with different auth UIs (Basic Auth, API Key / Bearer Token) can all
+// connect with the same single credential string:
+//
+//   1. "Basic <base64(user:pass)>"        — RFC 7617 (default)
+//   2. "Bearer <base64(user:pass)>"       — Perplexity-style API Key with
+//                                           pre-encoded creds
+//   3. "Bearer <user:pass>"               — Perplexity-style API Key with
+//                                           the literal `user:pass` token
+//                                           (this is what the Perplexity
+//                                           connector UI sends today)
 const basicAuthMiddleware = (req: any, res: any, next: any) => {
   if (!ENABLE_AUTH) {
     return next();
   }
 
-  const authHeader = req.headers.authorization;
+  const authHeader: string | undefined = req.headers.authorization;
   if (!authHeader) {
     res.setHeader('WWW-Authenticate', 'Basic realm="Browser Tools Server"');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
-  const [username, password] = auth.split(':');
+  const [scheme, token] = authHeader.split(' ');
+  if (!scheme || !token) {
+    return res.status(400).json({ error: 'Malformed Authorization header' });
+  }
+
+  // Try to extract a `user:pass` pair from any of the three accepted forms.
+  let candidate: string | null = null;
+  if (scheme.toLowerCase() === 'basic') {
+    try {
+      candidate = Buffer.from(token, 'base64').toString('utf8');
+    } catch {
+      candidate = null;
+    }
+  } else if (scheme.toLowerCase() === 'bearer') {
+    if (token.includes(':')) {
+      // form (3): literal `user:pass`
+      candidate = token;
+    } else {
+      // form (2): base64(user:pass)
+      try {
+        const decoded = Buffer.from(token, 'base64').toString('utf8');
+        if (decoded.includes(':')) candidate = decoded;
+      } catch {
+        candidate = null;
+      }
+    }
+  } else {
+    return res.status(400).json({ error: `Unsupported auth scheme: ${scheme}` });
+  }
+
+  if (!candidate || !candidate.includes(':')) {
+    return res.status(403).json({ error: 'Invalid credentials' });
+  }
+
+  const sep = candidate.indexOf(':');
+  const username = candidate.slice(0, sep);
+  const password = candidate.slice(sep + 1);
 
   if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
     next();
