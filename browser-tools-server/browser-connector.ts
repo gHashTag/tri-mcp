@@ -20,6 +20,7 @@ import {
 } from "./lighthouse/index.js";
 import * as net from "net";
 import { runBestPracticesAudit } from "./lighthouse/best-practices.js";
+import { mountMcpHttpHandler, TOOL_NAMES_FOR_LOG } from "./mcp-http-handler.js";
 
 /**
  * Converts a file path to the appropriate format for the current platform
@@ -282,6 +283,22 @@ app.use((req: any, res: any, next: any) => {
 // Increase JSON body parser limit to 50MB to handle large screenshots
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
+
+// SR-02: Streamable HTTP MCP endpoint for Perplexity custom connector.
+// Mounted after auth middleware + body parsers; bridges 14 browser tools
+// to the internal REST routes already registered below.
+mountMcpHttpHandler(
+  app,
+  () => PORT,
+  {
+    username: AUTH_USERNAME,
+    password: AUTH_PASSWORD,
+    enabled: ENABLE_AUTH,
+  }
+);
+console.log(
+  `[MCP] /mcp will expose ${TOOL_NAMES_FOR_LOG.length} tools: ${TOOL_NAMES_FOR_LOG.join(", ")}`
+);
 
 // Helper to recursively truncate strings in any data structure
 function truncateStringsInData(data: any, maxLength: number): any {

@@ -1,0 +1,101 @@
+# Perplexity Custom Connector — SR-02 Streamable HTTP Setup
+
+This guide configures Perplexity (https://www.perplexity.ai/account/connectors) to talk to the
+`browser-tools-server` over the new **`/mcp` Streamable HTTP** endpoint introduced by SR-02.
+
+## 1. Endpoint
+
+| Field | Value |
+|---|---|
+| URL | `https://<your-tailscale-funnel>/mcp` (e.g. `https://playras-macbook-pro-1.tail01804b.ts.net/mcp`) |
+| Transport | **Streamable HTTP** |
+| Methods | `POST /mcp` (JSON-RPC 2.0) — `initialize`, `tools/list`, `tools/call` |
+| `GET /mcp` | Returns 405 (stateless mode — no SSE channel) |
+
+## 2. Authentication
+
+Pick **Basic Auth** in the Perplexity UI. Bearer / API Key options will fail.
+
+| Field | Value |
+|---|---|
+| Username | `$AUTH_USERNAME` (default `admin`, recommended `perplexity`) |
+| Password | `$AUTH_PASSWORD` (set in your local env) |
+
+The same Basic Auth header guards every browser-tools-server route (except
+`/.identity` and `/.port`), so this single credential covers `/mcp` plus the
+14 internal REST routes the tools bridge to.
+
+## 3. Tools Exposed (14)
+
+Bridged 1:1 from the existing stdio MCP server (`browser-tools-mcp/mcp-server.ts`):
+
+| Tool | Internal route |
+|---|---|
+| `getConsoleLogs` | `GET /console-logs` |
+| `getConsoleErrors` | `GET /console-errors` |
+| `getNetworkErrors` | `GET /network-errors` |
+| `getNetworkLogs` | `GET /network-success` |
+| `takeScreenshot` | `POST /capture-screenshot` |
+| `getSelectedElement` | `GET /selected-element` |
+| `wipeLogs` | `POST /wipelogs` |
+| `runAccessibilityAudit` | `POST /accessibility-audit` |
+| `runPerformanceAudit` | `POST /performance-audit` |
+| `runSEOAudit` | `POST /seo-audit` |
+| `runBestPracticesAudit` | `POST /best-practices-audit` |
+| `runNextJSAudit` | composite (guidance text) |
+| `runDebuggerMode` | composite (guidance text) |
+| `runAuditMode` | composite (guidance text) |
+
+## 4. Quick smoke test
+
+```bash
+BASE="https://<funnel-host>/mcp"
+AUTH=$(printf '%s' 'perplexity:test123' | base64)
+
+# initialize
+curl -sS -X POST "$BASE" \
+  -H "Authorization: Basic $AUTH" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.0.1"}}}'
+
+# tools/list — expect 14 entries
+curl -sS -X POST "$BASE" \
+  -H "Authorization: Basic $AUTH" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+
+# tools/call wipeLogs — should return {status:"ok"}
+curl -sS -X POST "$BASE" \
+  -H "Authorization: Basic $AUTH" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"wipeLogs","arguments":{}}}'
+```
+
+Responses use `text/event-stream` (single `event: message` frame per
+JSON-RPC reply) — Perplexity's Streamable HTTP transport handles this
+natively.
+
+## 5. Common errors
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `FETCHER_HTML_STATUS_CODE_ERROR` | Perplexity sent `Authorization: Bearer …` | Switch the connector auth type to **Basic Auth** |
+| 401 on every call | No Authorization header | Re-enter username/password in Perplexity UI |
+| 403 on every call | Wrong username/password | Match exactly to `AUTH_USERNAME` / `AUTH_PASSWORD` env |
+| `tools/list` returns 6 tools | Pointing at the Railway public MCP, not your local funnel | Update URL to your Tailscale Funnel host + `/mcp` |
+| `Method Not Allowed (stateless /mcp)` | Client tried `GET /mcp` for SSE stream | Only `POST /mcp` is supported in stateless mode |
+
+## 6. Local server start
+
+```bash
+cd browser-tools-server
+PORT=3026 AUTH_USERNAME=perplexity AUTH_PASSWORD=test123 npm start
+# → "[MCP] /mcp will expose 14 tools: …"
+```
+
+Then `tailscale funnel 3026` (or your existing funnel) makes the endpoint
+reachable from Perplexity. Funnel terminates TLS — Basic Auth still rides
+inside.
